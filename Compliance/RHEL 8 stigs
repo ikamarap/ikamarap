@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+#
+# Script to apply a basic set of RHEL 8 STIG controls
+# WARNING: For demonstration only. Production STIG application should use SCAP or Ansible Lockdown roles!
+#
+
+set -euo pipefail
+
+echo "==== RHEL 8 STIG: Baseline Hardening Script ===="
+
+# Helper: check root
+[ "$EUID" -ne 0 ] && echo "Run as root." && exit 1
+
+# 1. Set password complexity and minimum length
+echo "1. Setting password complexity and length in /etc/security/pwquality.conf"
+sed -i 's/^# minlen =.*/minlen = 15/' /etc/security/pwquality.conf
+sed -i 's/^# minclass =.*/minclass = 4/' /etc/security/pwquality.conf
+
+# 2. Set password expiration settings
+echo "2. Setting password aging policy in /etc/login.defs"
+sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS   60/' /etc/login.defs
+sed -i 's/^PASS_MIN_DAYS.*/PASS_MIN_DAYS   1/' /etc/login.defs
+sed -i 's/^PASS_WARN_AGE.*/PASS_WARN_AGE   7/' /etc/login.defs
+
+# 3. Set strong permissions on shadow and passwd files
+echo "3. Setting permissions on /etc/shadow and /etc/passwd"
+chmod 0000 /etc/shadow-
+chmod 0644 /etc/passwd
+chmod 000 /etc/gshadow*
+chmod 0644 /etc/group
+
+# 4. Ensure auditd is enabled and running
+echo "4. Enabling and starting auditd"
+systemctl enable auditd
+systemctl start auditd
+
+# 5. Setting TMOUT for session inactivity logout
+echo "5. Setting TMOUT for shells in /etc/profile.d/tmout.sh"
+echo "TMOUT=600; export TMOUT" > /etc/profile.d/tmout.sh
+chmod 0644 /etc/profile.d/tmout.sh
+
+# 6. Enforce permissions on /etc/cron.*
+echo "6. Setting permissions on /etc/cron.*"
+chown root:root /etc/cron.*
+chmod og-rwx /etc/cron.*
+
+# 7. Lock inactive accounts after 35 days
+echo "7. Setting INACTIVE to 35 in /etc/default/useradd"
+sed -i 's/^INACTIVE=.*/INACTIVE=35/' /etc/default/useradd
+
+# 8. Disable unnecessary services (example: vsftpd)
+echo "8. Disabling vsftpd if present"
+if systemctl is-enabled vsftpd >/dev/null 2>&1; then
+  systemctl stop vsftpd
+  systemctl disable vsftpd
+fi
+
+# 9. Set logging permissions
+echo "9. Setting log file directory ownership"
+chown root:root /var/log
+chmod 0755 /var/log
+
+# 10. (Optional) Enable firewall
+echo "10. Enabling firewalld"
+systemctl enable firewalld
+systemctl start firewalld
