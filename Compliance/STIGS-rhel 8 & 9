@@ -1,0 +1,40 @@
+---
+- name: Apply STIGs for RHEL 8 and 9 Servers
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    stig_rhel8_role: "ansible-lockdown.rhel8-stig"
+    stig_rhel9_role: "ansible-lockdown.rhel9-stig"
+
+  tasks:
+
+    - name: Display Linux Distribution and Version
+      debug:
+        msg:
+          - "Distribution: {{ ansible_distribution }}"
+          - "Version: {{ ansible_distribution_version }}"
+          - "Major Version: {{ ansible_distribution_major_version }}"
+
+    - name: Include RHEL 8 STIG Role when appropriate
+      include_role:
+        name: "{{ stig_rhel8_role }}"
+      when:
+        - ansible_distribution == "RedHat"
+        - ansible_distribution_major_version | int == 8
+
+    - name: Include RHEL 9 STIG Role when appropriate
+      include_role:
+        name: "{{ stig_rhel9_role }}"
+      when:
+        - ansible_distribution == "RedHat"
+        - ansible_distribution_major_version | int == 9
+
+    - name: Notify when system is not RHEL 8 or 9
+      debug:
+        msg: "Skipping STIG role. Not a RHEL 8 or 9 system."
+      when: not (
+        (ansible_distribution == "RedHat" and ansible_distribution_major_version | int == 8) or
+        (ansible_distribution == "RedHat" and ansible_distribution_major_version | int == 9)
+      )
