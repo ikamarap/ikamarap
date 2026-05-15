@@ -1,0 +1,60 @@
+---
+- name: Update and check RHEL 8 systems
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    network_service: sshd
+
+  tasks:
+    - name: Ensure only RHEL 8 systems are targeted
+      assert:
+        that:
+          - ansible_distribution == "RedHat"
+          - ansible_distribution_major_version | int == 8
+        fail_msg: "This playbook is for RHEL 8 systems only!"
+      tags: always
+
+    - name: Update all packages on RHEL 8 systems
+      dnf:
+        name: "*"
+        state: latest
+        update_cache: yes
+      tags: update
+
+    - name: Check if reboot is required (needs-restarting)
+      command: needs-restarting -r
+      register: reboot_required
+      failed_when: false
+      changed_when: false
+      tags: reboot
+
+    - name: Show if a reboot is required
+      debug:
+        msg: >-
+          {% if reboot_required.rc == 1 %}
+            REBOOT REQUIRED on {{ inventory_hostname }}
+          {% else %}
+            No reboot needed on {{ inventory_hostname }}
+          {% endif %}
+      tags: reboot
+
+    - name: Check that network service "{{ network_service }}" is running and enabled
+      service:
+        name: "{{ network_service }}"
+        state: started
+        enabled: yes
+      register: service_status
+      tags: network
+
+    - name: Display status of network service "{{ network_service }}"
+      debug:
+        msg: >-
+          Network service '{{ network_service }}' is
+          {% if service_status.state == 'started' and service_status.enabled %}
+            running and enabled.
+          {% else %}
+            NOT running or NOT enabled!
+          {% endif %}
+      tags: network
