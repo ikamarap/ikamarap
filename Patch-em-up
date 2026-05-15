@@ -1,0 +1,78 @@
+---
+- name: Patch Linux Systems and Validate Network Services
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  vars:
+    network_services:
+      - NetworkManager
+      - sshd
+    ping_target: 8.8.8.8
+    ping_count: 2
+
+  tasks:
+    - name: Show Linux Distribution
+      debug:
+        msg:
+          - "Distribution: {{ ansible_distribution }}"
+          - "Version: {{ ansible_distribution_version }}"
+          - "Kernel: {{ ansible_kernel }}"
+
+    - name: Update all packages on RHEL-based systems
+      dnf:
+        name: "*"
+        state: latest
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+
+    - name: Update all packages on Debian-based systems
+      apt:
+        upgrade: dist
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Check if reboot required on Debian systems
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required_debian
+      when: ansible_os_family == "Debian"
+
+    - name: Check if reboot required on RHEL systems
+      command: needs-restarting -r
+      register: reboot_required_rhel
+      failed_when: false
+      changed_when: false
+      when: ansible_os_family == "RedHat"
+
+    - name: Reboot Debian systems if required
+      reboot:
+        msg: "System reboot initiated by Ansible after patching."
+        reboot_timeout: 600
+      when:
+        - ansible_os_family == "Debian"
+        - reboot_required_debian.stat.exists
+
+    - name: Reboot RHEL systems if required
+      reboot:
+        msg: "System reboot initiated by Ansible after patching."
+        reboot_timeout: 600
+      when:
+        - ansible_os_family == "RedHat"
+        - reboot_required_rhel.rc == 1
+
+    - name: Ensure network services are enabled and running
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop: "{{ network_services }}"
+
+    - name: Verify network connectivity
+      command: ping -c {{ ping_count }} {{ ping_target }}
+      register: ping_result
+      changed_when: false
+
+    - name: Display ping results
+      debug:
+        var: ping_result.stdout
